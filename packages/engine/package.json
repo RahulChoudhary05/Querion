@@ -1,0 +1,17 @@
+{
+  "name": "@querion/engine",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isomorphic SQL engine: dataset loading, sandboxed execution on PGlite, result judging, error intelligence.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15"
+  }
+}

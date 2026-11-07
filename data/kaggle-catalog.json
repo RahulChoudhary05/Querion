@@ -1,0 +1,11 @@
+{
+  "$comment": "Kaggle datasets Querion can ingest. 'builtin' entries feed hand-written normalisers; others are auto-ingested (CSV → typed tables, deterministic sample). The monthly job ingests the next not-yet-ingested entry, and optionally discovers a trending CSV dataset (KAGGLE_DISCOVER=true).",
+  "datasets": [
+    { "slug": "shivamb/netflix-shows", "folder": "netflix", "builtin": "streamflix" },
+    { "slug": "heesoo37/120-years-of-olympic-history-athletes-and-results", "folder": "olympics", "builtin": "olympics" },
+    { "slug": "nehalbirla/vehicle-dataset-from-cardekho", "key": "cardekho", "name": "CarDekho Used Cars", "domain": "automotive", "maxRows": 1500 },
+    { "slug": "yasserh/uber-fares-dataset", "key": "uberfares", "name": "Uber Fares", "domain": "transport", "maxRows": 1500 },
+    { "slug": "shivamb/amazon-prime-movies-and-tv-shows", "key": "primevideo", "name": "Amazon Prime Catalog", "domain": "media", "maxRows": 1500 },
+    { "slug": "carrie1/ecommerce-data", "key": "onlineretail", "name": "UK Online Retail", "domain": "commerce", "maxRows": 2000 }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@querion/web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "6",
+    "@codemirror/lang-sql": "6",
+    "@codemirror/language": "6",
+    "@codemirror/state": "6",
+    "@codemirror/view": "6",
+    "@electric-sql/pglite": "^0.5.15",
+    "@lezer/highlight": "^1.2.5",
+    "@querion/engine": "workspace:^",
+    "@tanstack/react-query": "5",
+    "@uiw/react-codemirror": "4",
+    "@xyflow/react": "12",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.70.0",
+    "motion": "^14.10.1",
+    "react": "19",
+    "react-dom": "19",
+    "react-markdown": "10",
+    "react-resizable-panels": "3",
+    "react-router": "7",
+    "remark-gfm": "4",
+    "sql-formatter": "^15.9.0",
+    "zustand": "5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4",
+    "@types/react": "19",
+    "@types/react-dom": "19",
+    "@vitejs/plugin-react": "5",
+    "tailwindcss": "4",
+    "vite": "7"
+  }
+}

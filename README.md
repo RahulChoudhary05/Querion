@@ -1,329 +1,168 @@
-# 🔐 CipherSQLStudio
+# ✦ Querion
 
-**A browser-based SQL learning platform** where students practice SQL queries against pre-configured assignments with real-time execution and AI-powered hints — inspired by LeetCode and SQL-Practice.com.
+**Master SQL on real data, judged like an interview.**
+
+Querion is a PostgreSQL practice studio. Every week an AI agent (**Nebula**) pulls fresh datasets from Kaggle, designs a relational schema, and forges new problems. Each problem is verified on real Postgres, judged against hidden test data, and coached by an AI tutor that never hands over the answer. Everything runs on free tiers.
+
 
 ---
 
-## 🚀 Quick Start
+## Why Querion — the gaps it closes
 
-### Prerequisites
-- Node.js ≥ 18.x
-- npm ≥ 9.x
-- MongoDB Atlas account (free tier)
-- PostgreSQL on Neon.tech (free tier)
-- Google Gemini API key (free)
+| Gap in today's SQL practice sites | What Querion does |
+|---|---|
+| Static question banks that everyone has memorised | **Nebula** forges new problems daily and weekly from newly scouted Kaggle data |
+| AI-generated questions with wrong answers | Expected outputs are **computed** on real Postgres and never written by a model. The reference must be deterministic, and a **second model blind-solves** the statement before it is published |
+| "Matches the sample" ≠ correct | **Hidden test datasets** (shuffled storage, sparse data, ties & duplicates), like DSA judges |
+| No notion of an *optimal* query | Accepted answers are compared to the reference **planner cost**. **Architect** problems fail with `INEFFICIENT` if you blow the cost budget |
+| Hints that spoil the answer | A 3-step **hint ladder** (nudge → concept → skeleton) personalised to your query, with a token-overlap **leak guard** |
+| Cryptic Postgres errors | Offline **error intelligence** ("Did you mean `full_name` (in drivers)?") plus an AI root-cause explanation |
+| Flat lists of unrelated questions | Every dataset is a **track with 6 tiers**: Foundations → Aggregation → Relationships → Composition → Analytics → Architect |
+| Slow server round-trips for every run | **PostgreSQL compiled to WebAssembly (PGlite)** runs in your browser, so runs are instant and private |
+| Shared DB sandboxes (security risk) | Learner SQL runs only in throwaway in-memory PGlite instances inside worker threads, in `READ ONLY` transactions, with a tokenizer-based guard and hard kill on timeout |
 
-### 1. Clone & Install
+## Feature tour
+
+- **Studio**: resizable 3-pane IDE with CodeMirror 6, schema-aware autocomplete, Run (`Ctrl/⌘+Enter`, runs the selection or the whole query), Submit (`Ctrl/⌘+Shift+Enter`), Format (`Ctrl/⌘+S`), autosaved drafts, error-line highlighting, an interactive **ER diagram**, a result grid with CSV/TSV export, a row-level **diff** of expected vs your rows, and **EXPLAIN ANALYZE** as a cost-hotspot tree.
+- **Judge**: 4 test cases per problem, verdicts `ACCEPTED · WRONG_ANSWER · RUNTIME_ERROR · TIME_LIMIT · REJECTED · INEFFICIENT`, with an efficiency comparison against the reference plan.
+- **AI tutor**: personalised hint ladder, "Explain this error", "Why is this wrong?", a post-accept senior **code review**, and free-form questions. Groq first, Gemini 2.5 Flash fallback, curated offline fallback.
+- **Learning paths**: tracks per dataset, a Daily Orbit, a weekly Constellation pack, recommendations ("Up next", "Strengthen your weakest topic"), streaks, a heatmap, and topic mastery.
+- **Product UX**: command palette (`Ctrl/⌘+K`), persistent sidebar, keyboard shortcuts (`?`), YouTube-style top loader, skeletons, optimistic submits with rollback, undoable bulk actions, URL-synced filters, smart form validation, onboarding, referrals (`/invite/:handle`), destructive-action confirmations (type-to-confirm), error boundaries with retry, a custom 404, a mobile layout, and dark/light themes.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[React 19 studio] -->|Run| W[Web Worker<br/>PGlite · Postgres WASM]
+  end
+  UI -->|Submit / AI / auth| API[Hono API · Node 22]
+  API --> Pool[Judge pool<br/>worker_threads + PGlite<br/>READ ONLY · hard timeout]
+  API --> DB[(Postgres<br/>PGlite local · Neon prod)]
+  API --> LLM[Groq → Gemini<br/>OpenAI-compatible]
+  subgraph Nebula agent
+    Cron[GitHub Actions cron<br/>or /api/hooks/*] --> Ins[Weekly insights]
+    Ins --> Scout[Kaggle Scout<br/>search · rank · design schema · validate]
+    Scout --> Forge[Forge<br/>draft → verify ×4 variants → determinism<br/>→ quality gates → blind solve → publish]
+    Forge --> DB
+    Forge --> Mail[Resend digest]
+  end
+```
+
+```
+apps/
+  api/                 Hono API, judge pool, AI tutor, Nebula agent, scheduler, CLIs
+    src/nebula/        forge · scout · insights · recommend · scheduler · datasets/ (generators + Kaggle normalisers)
+  web/                 React 19 + Vite 7 + Tailwind 4 + Motion + CodeMirror 6 + PGlite worker
+packages/
+  engine/              isomorphic core (browser + Node): SQL tokenizer/guard, dataset loader,
+                       test-variant generator, result judge, runner, EXPLAIN, error intelligence
+data/
+  datasets/*.json      curated catalog (synthetic domains + normalised Kaggle slices)
+  kaggle-catalog.json  datasets the agent may ingest
+.github/workflows/nebula.yml   free scheduler (daily + Sunday weekly agent)
+```
+
+### The Nebula weekly agent (Sunday 18:00 UTC → published Monday)
+
+1. **Insights**: per-learner outcomes from last week: solve rate per topic, hardest and abandoned problems, popular domains.
+2. **Kaggle Scout**: searches a rotating domain and keeps open-license, well-rated, small CSV datasets that haven't been used yet. An LLM ranks them by *SQL-teachability*.
+3. **Schema design**: the LLM writes a normalised 2–5 table schema as SQL over the raw CSV. It is **executed on Postgres** and validated (non-empty tables, unique PKs, FKs that resolve, at least one relationship). Errors go back to the model for repair.
+4. **Forge a ladder**: one problem per tier (1→6) on the new dataset, plus *stepping-stone* problems for last week's weakest topics.
+5. **Verify**: the reference runs on 4 data variants and on mirrored storage order, so non-deterministic answers are rejected. Quality gates check row counts, named columns, novelty and banned functions. A **second model blind-solves** the statement, and if it disagrees the statement gets rewritten.
+6. **Publish & notify**: expected outputs are stored as computed. Opted-in users get a Resend digest.
+
+Free-tier aware: providers that return 429 are benched (cooldown), and the calendar falls back to unused curated problems so it never has gaps.
+
+## Quick start
+
+Requirements: Node ≥ 22, pnpm 9 (`npm i -g pnpm`).
 
 ```bash
-# Install backend dependencies
-cd backend && npm install
-
-# Install frontend dependencies  
-cd ../frontend && npm install
+pnpm install
 ```
-
-### 2. Configure Environment Variables
-
-**Backend** — copy `backend/.env.example` → `backend/.env`:
-
-```env
-NODE_ENV=development
-PORT=5000
-CORS_ORIGIN=http://localhost:5173
-
-MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/ciphersqlstudio
-DATABASE_URL=postgresql://<user>:<pass>@ep-xxxx.neon.tech/neondb?sslmode=require
-
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
-ALLOW_HINT_FALLBACK=true
-```
-
-**Frontend** — `frontend/.env` already set to:
-
-```env
-VITE_API_URL=https://ciphersqlstudio-1km8.onrender.com/api
-```
-
-### 3. Seed the Database
 
 ```bash
-cd backend
-npm run seed
+cp apps/api/.env.example apps/api/.env   # add your free GROQ_API_KEY (gsk_…) — Gemini is an optional backup
 ```
-
-This seeds SQL assignments across Easy / Medium / Hard difficulty.
-
-### 3.1 Build Unified Question Bank From Kaggle/AdventureWorks (Optional)
-
-Add Kaggle credentials to `backend/.env`:
-
-```env
-KAGGLE_USERNAME=your_kaggle_username
-KAGGLE_KEY=your_kaggle_api_key
-```
-
-Install Kaggle CLI:
 
 ```bash
-py -m pip install kaggle
+pnpm doctor   # checks Groq, Gemini, Kaggle, database, email and secrets with real requests
 ```
-
-Download all configured datasets and seed unified assignments:
 
 ```bash
-cd backend
-npm run datasets:pull
-npm run seed:unified
+pnpm dev
 ```
 
-Notes:
-- The script auto-creates `C:/Users/<you>/.kaggle/kaggle.json` from env vars if missing.
-- Keep Kaggle keys in backend `.env` (already gitignored), not in frontend files.
+Open http://localhost:5173. The API (port 8787) uses an **embedded Postgres (PGlite) stored in `.data/`**, so there is no database to install. On first boot it verifies and seeds the curated problem bank.
 
-### 4. Run the App
+Useful scripts:
 
-```bash
-# Terminal 1 — Backend (port 5000)
-cd backend && npm run dev
+| Command | What it does |
+|---|---|
+| `pnpm doctor` | test every key/connection (each AI model, Kaggle search + download, Neon, Resend, secrets) |
+| `pnpm mail:test you@mail.com all` | send every email (test, welcome, reset, changed, weekly) through Resend and print Resend's real response |
+| `pnpm test` | engine tests + API integration tests (auth, judge, security limits, AI fallback) |
+| `pnpm --filter @querion/api exec tsx src/cli/check.ts` | re-verify every curated problem on Postgres + tier calibration |
+| `pnpm forge -- --pack --dataset shipfast` | forge an Easy / Medium / Hard pack for one segment (or `--domain transport`) |
+| `pnpm forge -- --one --dataset transit --tier 5` | forge one problem and print every verification step |
+| `pnpm --filter @querion/api exec tsx src/cli/nebula.ts scout transport` | scout Kaggle for a fresh dataset in a segment |
+| `pnpm --filter @querion/api exec tsx src/cli/nebula.ts weekly` | run the full weekly agent now |
+| `pnpm datasets:build` | rebuild curated dataset JSON (synthetic + Kaggle normalisers) |
 
-# Terminal 2 — Frontend (port 5173)
-cd frontend && npm run dev
-```
+### AI setup (Groq first)
 
-Visit: **http://localhost:5173**
+`GROQ_MODEL=openai/gpt-oss-120b` drafts problems. Other Groq models (`qwen/qwen3.8-27b`, `openai/gpt-oss-20b`) blind-solve and review them, so a *different model family* always checks the work. Gemini (`GEMINI_MODELS`) is an optional backup; set `AI_PROVIDERS=groq` to never call it. Models a key doesn't have are skipped automatically. Rate-limited models cool down while the next one takes over, and Groq's short per-minute limits are waited out instead of falling back.
 
----
+### Forge quality gates
 
-## 📁 Project Structure
+Every AI problem must pass, in order: Postgres execution on 4 data variants, a determinism check, quality rules (row counts, named columns, novelty, no `NOW()`), **tier calibration** (the reference must really use that tier's skills), a **blind solve** by another model from the statement alone (wrong answer means the statement gets rewritten), and an **editor rubric** (clarity, realism, difficulty fit, teaching value; overall ≥ 7). Two hand-written curated problems are shown to the model as the house standard.
 
-```
-CipherSQLStudio/
-├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   │   └── database.js          # PostgreSQL (Neon) + MongoDB connections
-│   │   ├── controllers/
-│   │   │   ├── assignmentController.js  # Workspace creation & CRUD
-│   │   │   ├── queryController.js       # SQL execution + test case validation
-│   │   │   └── hintController.js        # AI hint generation
-│   │   ├── models/
-│   │   │   └── Assignment.js        # MongoDB schema
-│   │   ├── routes/
-│   │   │   ├── assignmentRoutes.js
-│   │   │   ├── queryRoutes.js       # /execute + /validate endpoints
-│   │   │   ├── hintRoutes.js
-│   │   │   └── progressRoutes.js
-│   │   ├── seeds/
-│   │   │   └── assignmentsSeeder.js # 14 SQL problems (Easy/Medium/Hard)
-│   │   ├── services/
-│   │   │   └── llmService.js        # Google Gemini integration (hints only)
-│   │   └── server.js
-│   ├── .env
-│   ├── .env.example
-│   └── package.json
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── AssignmentsView.jsx  # Problem listing page (with filters)
-│   │   │   ├── AssignmentsView.scss
-│   │   │   ├── AssignmentCard.jsx   # Individual problem card
-│   │   │   ├── AssignmentCard.scss
-│   │   │   ├── AttemptView.jsx      # Split-panel coding interface
-│   │   │   ├── AttemptView.scss
-│   │   │   ├── SQLEditor.jsx        # Monaco Editor wrapper
-│   │   │   ├── SQLEditor.scss
-│   │   │   ├── SchemaViewer.jsx     # Table schema + sample data viewer
-│   │   │   ├── SchemaViewer.scss
-│   │   │   ├── ResultsTable.jsx     # Query results display
-│   │   │   └── ResultsTable.scss
-│   │   ├── services/
-│   │   │   └── api.js               # Axios API client
-│   │   ├── styles/
-│   │   │   ├── _variables.scss      # Design tokens (dark theme)
-│   │   │   ├── _mixins.scss         # Responsive breakpoints, utilities
-│   │   │   └── _base.scss           # Global reset + base styles
-│   │   ├── App.jsx
-│   │   ├── App.scss
-│   │   └── main.jsx
-│   ├── .env
-│   ├── .env.example
-│   ├── index.html
-│   └── package.json
-│
-├── .gitignore
-└── README.md
-```
+### Email (Resend)
 
----
+| Email | Sent when |
+|---|---|
+| Welcome | right after sign-up |
+| Password reset | `/forgot-password` (single-use link, 30 min) |
+| Password changed | after a reset or a change in Settings (security alert) |
+| Weekly pack | Sunday weekly run, to users with weekly emails on (one-click unsubscribe) |
 
-## 🏗️ Architecture & Data Flow
+Set `RESEND_API_KEY` (a "sending access" key is enough). **Important:** while `MAIL_FROM` uses `onboarding@resend.dev`, Resend delivers **only to your own Resend account email**. To email real users, add a domain at [resend.com/domains](https://resend.com/domains), add its DNS records, then set `MAIL_FROM="Querion <no-reply@your-domain>"`. Set `APP_URL` to your live site so links in emails work. Failures are logged with Resend's actual error message. In dev, if a reset email can't be delivered, the link is printed in the API console.
 
-```
-User Browser (React + Vite)
-        │
-        │  1. GET /api/assignments     → Load assignment list (MongoDB)
-        │  2. GET /api/assignments/:id → Create PostgreSQL workspace + return data
-        │
-        ↓
-Backend API (Express.js : 5000)
-        │
-        ├─ MongoDB Atlas ──────────── Stores assignments, schemas, expected output
-        │                             (Accessed via Mongoose)
-        │
-        ├─ PostgreSQL (Neon.tech) ─── Isolated sandbox per assignment session
-        │   Workspace Schema:         (Each user gets workspace_<timestamp>_<id>)
-        │   workspace_xxx.employees
-        │   workspace_xxx.orders
-        │
-        └─ Google Gemini 2.0 Flash ── Hint generation (never reveals solutions)
-```
+### Design system
 
-### Query Execution Flow
+One theme, **Cobalt Observatory**: Swiss grid + editorial type (Geist + *Instrument Serif* accents) + aurora light. Colour rule: **black + cobalt do 90% of the work; acid lime is reserved for the one action we want pressed** (Solve / Run / Submit) and the logo's "answer" star. Status colours are muted so they never compete.
 
-```
-User writes SQL query
-        ↓
-Click "Run" → POST /api/query/execute
-        ↓
-Backend validates: only SELECT / WITH allowed
-        ↓
-SET search_path TO "workspace_xxx"
-        ↓
-Execute query against isolated schema
-        ↓
-Return { columns, rows, rowCount, executionTime }
-        ↓
-ResultsTable renders output
+### Security
 
-Click "Submit" → POST /api/query/validate
-        ↓
-Execute query + compare with expectedOutput in MongoDB
-        ↓
-Return { passed: true/false, feedback }
-        ↓
-Test case panel shows ✓ or ✗
-```
+Strict CSP (only `'wasm-unsafe-eval'` for in-browser Postgres), HSTS, `frame-ancestors 'none'`. JWT pinned to HS256 with issuer and audience. Login takes equal time whether or not the account exists. Rate limits apply per identity **and** per IP. 64 KB body limit. Constant-time admin/cron secret checks. Learner SQL runs only in throwaway PGlite workers, read-only, with a hard timeout.
 
----
+## Deploy for $0
 
-## 📚 Assignment Topics (14 Problems)
+| Piece | Free service |
+|---|---|
+| Web + API (one service) | **Render** free web service (`render.yaml`) — or Koyeb / Fly |
+| Database | **Neon** free Postgres → `DB_DRIVER=postgres`, `DATABASE_URL=…` |
+| Scheduling | **GitHub Actions** (`.github/workflows/nebula.yml`) — works while the web host sleeps. Any other cron (n8n, cron-job.org) can call `POST /api/hooks/daily` or `/api/hooks/weekly` with `x-cron-secret` |
+| Web (static) | **Cloudflare Pages** with root directory `apps/web`, build `pnpm build`, output `dist`. Env: `VITE_SITE_URL` (your site URL), `API_ORIGIN` (your Render URL) and `PROXY_SECRET`. The Pages Function in `apps/web/functions/api/[[path]].ts` serves `/api/*` on your own domain, so the session cookie is first-party. Leave `VITE_API_URL` unset. |
+| AI | **Groq** free tier (primary) · Gemini free tier optional backup |
+| Data | **Kaggle API** (free account token) |
+| Email | **Resend** free tier (3,000/month) |
 
-| # | Title | Difficulty | Topic |
-|---|-------|-----------|-------|
-| 1 | Select All Employees | 🟢 Easy | SELECT |
-| 2 | Filter by Salary | 🟢 Easy | WHERE |
-| 3 | Count Total Products | 🟢 Easy | Aggregate |
-| 4 | String Functions - UPPER & LENGTH | 🟢 Easy | String Functions |
-| 5 | ORDER BY - Sort Products | 🟢 Easy | ORDER BY |
-| 6 | DISTINCT Values | 🟢 Easy | DISTINCT |
-| 7 | INNER JOIN - Employees & Departments | 🟡 Medium | JOIN |
-| 8 | GROUP BY - Avg Salary per Department | 🟡 Medium | GROUP BY |
-| 9 | HAVING Clause - High Budget Departments | 🟡 Medium | HAVING |
-| 10 | LEFT JOIN - All Customers & Orders | 🟡 Medium | JOIN |
-| 11 | Date Functions - Recent Hires | 🟡 Medium | Date Functions |
-| 12 | LIKE - Search by Pattern | 🟡 Medium | LIKE |
-| 13 | Subquery - Above Average Salary | 🔴 Hard | Subquery |
-| 14 | Correlated Subquery - Dept Leaders | 🔴 Hard | Subquery |
-| 15 | Window Function - Row Number | 🔴 Hard | Window Functions |
-| 16 | CTE - Sales Analysis | 🔴 Hard | CTE |
-| 17 | SELF JOIN - Employee Manager | 🔴 Hard | JOIN |
+Set the same secrets in GitHub (Settings → Secrets → Actions) and in Render: `DATABASE_URL`, `GROQ_API_KEY` / `GEMINI_API_KEY`, `KAGGLE_USERNAME`, `KAGGLE_KEY`, `RESEND_API_KEY`, `APP_URL`, `JWT_SECRET`, `CRON_SECRET`. On Render also set `CORS_ORIGIN` = your site URL and `PROXY_SECRET` (same value as in Pages).
 
-> Re-run `npm run seed` in `/backend` to add all assignments.
+### Accounts & sessions
 
----
+- **Flow:** public landing → `/signup` or `/login` → `/dashboard`. Every app page (`/dashboard`, `/problems`, `/p/:slug`, `/me`, `/settings`) requires a session; signed-out visitors are sent to `/login?next=…` and returned afterwards. Only same-site paths are accepted for `next`.
+- **Sessions:** an opaque 256-bit token in an **httpOnly** cookie that JavaScript can't read (`__Host-qn_session` in production: Secure, `SameSite=Lax`). The database stores only an HMAC of the token. Sessions expire after 30 days idle (90 days absolute) and can be revoked one by one, all except the current one, or automatically on password change.
+- **CSRF:** every state-changing request must carry `X-Querion-CSRF` and come from an allowed Origin.
+- **Passwords:** bcrypt (cost 12), with a policy against common passwords and passwords containing your handle or email. Logins take equal time whether or not the account exists, and an account locks for 15 minutes after 8 failed attempts.
+- **Reset:** a single-use, hashed, 30-minute token sent by email (printed to the server console in dev when email isn't configured). Resetting signs out every device.
 
-## 🛠️ Technology Stack
+## Tech stack
 
-| Component | Technology | Reason |
-|-----------|-----------|--------|
-| Frontend | React 18 + Vite | Fast dev server, component architecture |
-| Styling | Vanilla SCSS | Mobile-first, BEM naming, variables, mixins |
-| Code Editor | Monaco Editor | Professional SQL editing with syntax highlighting |
-| Backend | Node.js + Express | Lightweight, fast REST API |
-| Sandbox DB | PostgreSQL (Neon) | Isolated schemas per session for safety |
-| Persistence DB | MongoDB Atlas | Flexible schema for assignment data |
-| AI Hints | Google Gemini 2.0 Flash | Free tier, strong SQL understanding |
+TypeScript everywhere · **React 19**, **Vite 7**, **Tailwind CSS 4**, **Motion**, **TanStack Query 5**, **Zustand 5**, **CodeMirror 6**, **React Flow 12**, **react-resizable-panels** · **Hono 4** on Node 22, **Zod 4**, httpOnly cookie sessions · **PGlite 0.5** (Postgres 17 in WASM) in browser, judge workers and local dev · **Neon** Postgres in production · **Groq** and **Gemini** via their OpenAI-compatible endpoints · **Kaggle API** · **Resend** · **GitHub Actions**.
 
----
+## Data & licenses
 
-## 🔒 Security Features
-
-- Only `SELECT` and `WITH...SELECT` (CTE) queries are allowed
-- Whole-word keyword detection prevents false positives on column names
-- Every user gets an isolated PostgreSQL schema (`workspace_<id>`) 
-- Parameterized inserts when loading sample data
-- Schema names are validated with strict regex before use
-- Rate limiting: 100 requests per 15 minutes
-- `statement_timeout = 10000ms` prevents runaway queries
-
----
-
-## 🌱 Environment Variables Reference
-
-### Backend (`backend/.env`)
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment | `development` |
-| `PORT` | Server port | `5000` |
-| `CORS_ORIGIN` | Frontend URL | `http://localhost:5173` |
-| `MONGODB_URI` | MongoDB Atlas URI | `mongodb+srv://...` |
-| `DATABASE_URL` | PostgreSQL (Neon) | `postgresql://...` |
-| `LLM_PROVIDER` | AI provider | `gemini` |
-| `GEMINI_API_KEY` | Google Gemini key | `AIza...` |
-| `GEMINI_MODEL` | Gemini model name | `gemini-2.5-flash` |
-| `ALLOW_HINT_FALLBACK` | Allow local fallback hints if Gemini fails (set `false` in production strict mode) | `true` |
-
-### Frontend (`frontend/.env`)
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `VITE_API_URL` | Backend API URL | `https://ciphersqlstudio-1km8.onrender.com/api` |
-
----
-
-## 📱 Responsive Breakpoints
-
-| Breakpoint | Width | Layout |
-|-----------|-------|--------|
-| Mobile | 320px+ | Stacked panels, vertical layout |
-| Tablet | 641px+ | 2-column assignment grid |
-| Desktop | 1024px+ | Split LeetCode-style layout |
-| Wide | 1281px+ | 4-column assignment grid |
-
----
-
-## 🧪 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Server health check |
-| GET | `/api/assignments` | List all assignments (supports `?difficulty=Easy&topic=JOIN`) |
-| GET | `/api/assignments/:id` | Get assignment + create workspace |
-| POST | `/api/assignments` | Create assignment (admin) |
-| DELETE | `/api/assignments/workspace/:id` | Cleanup workspace schema |
-| POST | `/api/query/execute` | Execute SQL query |
-| POST | `/api/query/validate` | Execute + validate against expected output |
-| POST | `/api/hint/generate` | Generate AI hint |
-
----
-
-## 🎨 Design System
-
-- **Theme**: Dark (GitHub-inspired — #0d1117 background)
-- **Font**: Inter (UI) + JetBrains Mono (code)
-- **Colors**: Electric blue (#58a6ff), Success green (#3fb950), Purple (#bc8cff)
-- **Difficulty**: 🟢 Easy (#3fb950) | 🟡 Medium (#e3b341) | 🔴 Hard (#f78166)
-- **Animations**: FadeInUp, slide, cursor blink, hover glows
-
----
-
-## ✅ Assignment Submission Checklist
-
-- Include your hand-drawn data-flow diagram in the repo (image/PDF), showing: Execute Query click → API call → PostgreSQL query → state update → result render.
-- For assignment demos, keep `ALLOW_HINT_FALLBACK=true` to avoid hard failures when Gemini is temporarily unavailable; set it to `false` for strict production mode.
-- Commit `README.md`, `.env.example` files, and source code only (never commit `.env` files).
+Synthetic datasets (transit, autohaus, shipfast, carepoint, shopwave) are generated deterministically and released under CC0. Kaggle datasets keep their original open licenses and link to their sources. Netflix titles: CC0. Olympics: CC0.

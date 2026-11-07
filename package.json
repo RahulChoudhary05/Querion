@@ -1,34 +1,33 @@
 {
-  "name": "ciphersqlstudio",
-  "version": "1.0.0",
-  "description": "SQL Learning Platform - Browser-based SQL practice with AI hints",
+  "name": "querion",
+  "version": "2.0.0",
   "private": true,
-  "scripts": {
-    "install:all": "cd backend && npm install && cd ../frontend && npm install",
-    "free-port:dev": "kill-port 5000 5173 || echo Dev ports already free",
-    "predev": "npm run free-port:dev",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "seed": "cd backend && npm run seed",
-    "build:frontend": "cd frontend && npm run build",
-    "build:backend": "cd backend && npm start",
-    "clean": "node cleanup.js"
-  },
-  "keywords": [
-    "sql",
-    "learning",
-    "education",
-    "react",
-    "nodejs"
-  ],
-  "author": "",
+  "description": "Querion \u2014 a PostgreSQL studio with fresh, AI-forged, auto-verified SQL problems built from real Kaggle datasets.",
   "license": "MIT",
-  "devDependencies": {
-    "concurrently": "^8.2.2",
-    "kill-port": "^2.0.1"
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
   },
-  "dependencies": {
-    "pg": "^8.19.0"
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c magenta,cyan \"pnpm --filter @querion/api dev\" \"pnpm --filter @querion/web dev\"",
+    "dev:api": "pnpm --filter @querion/api dev",
+    "dev:web": "pnpm --filter @querion/web dev",
+    "build": "pnpm --filter @querion/web build",
+    "start": "pnpm --filter @querion/api start",
+    "datasets:build": "pnpm --filter @querion/api datasets:build",
+    "seed": "pnpm --filter @querion/api seed",
+    "forge": "pnpm --filter @querion/api forge",
+    "kaggle:sync": "pnpm --filter @querion/api kaggle:sync",
+    "test": "pnpm --filter @querion/engine test && pnpm --filter @querion/api test",
+    "typecheck": "pnpm -r typecheck",
+    "doctor": "pnpm --filter @querion/api doctor",
+    "mail:test": "pnpm --filter @querion/api mail:test"
+  },
+  "devDependencies": {
+    "@types/node": "22",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9"
   }
 }

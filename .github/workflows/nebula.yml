@@ -1,0 +1,62 @@
+# Nebula — the free-forever automation for Querion.
+# GitHub Actions cron (free for public repos; 2,000 min/month on private) runs the
+# agent directly against your hosted Postgres (Neon free tier), so it works even
+# while a free web host (Render/Koyeb) is asleep.
+#
+# Required repository secrets:
+#   DATABASE_URL            Neon / Supabase connection string
+#   GROQ_API_KEY            and/or GEMINI_API_KEY (free tiers)
+#   KAGGLE_USERNAME, KAGGLE_KEY
+# Optional: RESEND_API_KEY, MAIL_FROM, APP_URL, JWT_SECRET (for unsubscribe links)
+
+name: Nebula
+
+on:
+  schedule:
+    - cron: '5 0 * * *' # daily problem — 00:05 UTC
+    - cron: '0 18 * * 0' # weekly agent — Sunday 18:00 UTC (pack for next Monday)
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'daily | weekly | scout'
+        default: weekly
+
+concurrency: nebula
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NODE_ENV: production
+      DB_DRIVER: postgres
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      MAIL_FROM: ${{ secrets.MAIL_FROM }}
+      APP_URL: ${{ secrets.APP_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-only-secret-not-used-for-auth-0000' }}
+      SCHEDULER_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Engine tests
+        run: pnpm test
+      - name: Verify curated bank
+        run: pnpm --filter @querion/api exec tsx src/cli/check.ts
+      - name: Run Nebula
+        run: |
+          JOB="${{ github.event.inputs.job }}"
+          if [ -z "$JOB" ]; then
+            if [ "${{ github.event.schedule }}" = "0 18 * * 0" ]; then JOB=weekly; else JOB=daily; fi
+          fi
+          echo "Running Nebula job: $JOB"
+          pnpm --filter @querion/api exec tsx src/cli/nebula.ts "$JOB"

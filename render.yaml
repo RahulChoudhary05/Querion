@@ -1,0 +1,46 @@
+# One free Render web service serves both the API and the built web app.
+# Pair with a free Neon Postgres (DATABASE_URL) and the GitHub Actions workflow
+# in .github/workflows/nebula.yml for scheduling (free services sleep when idle).
+services:
+  - type: web
+    name: querion
+    runtime: node
+    plan: free
+    # --prod=false: the build (vite, tsc) and runtime (tsx) need dev tooling even with NODE_ENV=production
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_DRIVER
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      # shared with the Cloudflare Pages proxy (apps/web/functions) so it can vouch for visitor IPs
+      - key: PROXY_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: KAGGLE_USERNAME
+        sync: false
+      - key: KAGGLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      # e.g. "Querion <no-reply@your-verified-domain>" (resend.dev only reaches your own inbox)
+      - key: MAIL_FROM
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      # GitHub Actions does the scheduled work; avoid duplicate runs from the web dyno
+      - key: SCHEDULER_ENABLED
+        value: 'false'
