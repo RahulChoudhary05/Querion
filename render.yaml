@@ -7,7 +7,7 @@ services:
     runtime: node
     plan: free
     # --prod=false: the build (vite, tsc) and runtime (tsx) need dev tooling even with NODE_ENV=production
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm build
     startCommand: pnpm start
     healthCheckPath: /api/health
     envVars:

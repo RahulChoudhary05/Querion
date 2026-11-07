@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "concurrently -k -n api,web -c magenta,cyan \"pnpm --filter @querion/api dev\" \"pnpm --filter @querion/web dev\"",
