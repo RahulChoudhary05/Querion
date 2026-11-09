@@ -9,7 +9,13 @@ import { getDataset } from './registry';
 export async function seedCurated({ quiet = false } = {}) {
   let ok = 0;
   const failed: string[] = [];
-  for (const p of CURATED) {
+  // One dataset at a time, with fresh workers in between: each worker keeps every dataset
+  // (×4 variants) it has loaded, which would blow a 512 MB free-tier instance.
+  const ordered = [...CURATED].sort((a, b) => a.dataset.localeCompare(b.dataset));
+  let current = '';
+  for (const p of ordered) {
+    if (current && p.dataset !== current) await pool.recycle();
+    current = p.dataset;
     const ds = getDataset(p.dataset);
     if (!ds) {
       failed.push(`${p.title}: dataset ${p.dataset} missing`);
@@ -46,6 +52,7 @@ export async function seedCurated({ quiet = false } = {}) {
     ok++;
     if (!quiet) console.log(`  ✓ ${p.title}`);
   }
+  await pool.recycle();
   if (failed.length) console.warn(`  ✗ ${failed.length} curated problem(s) failed:\n    ${failed.join('\n    ')}`);
   return { ok, failed };
 }

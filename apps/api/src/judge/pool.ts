@@ -1,4 +1,5 @@
-import { Worker } from 'node:worker_threads';
+import { type ChildProcess, fork } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import type { Dataset, TestCase } from '@querion/engine';
 import { env } from '../env';
 
@@ -16,9 +17,13 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Workers must load TypeScript the same way the parent does (tsx registers via
- * --import / --require), but many other process flags (test runner, NODE_OPTIONS,
- * --watch …) are illegal inside workers. Forward only module-loader flags.
+ * Judge workers are child PROCESSES, not worker threads: booting PGlite (Postgres-in-WASM)
+ * inside a worker thread spikes to ~1 GB RSS, while a child process peaks at ~350 MB —
+ * the difference between fitting a 512 MB free-tier instance or getting OOM-killed.
+ *
+ * Children must load TypeScript the same way the parent does (tsx registers via
+ * --import / --require), but other flags (test runner, --watch …) must not be inherited.
+ * Forward only module-loader flags.
  */
 function loaderArgs(): string[] {
   const out: string[] = [];
@@ -40,12 +45,17 @@ interface Pending {
 }
 
 interface Slot {
-  worker: Worker;
+  worker: ChildProcess;
   busy: Pending | null;
   timer: NodeJS.Timeout | null;
   /** Fresh workers pay PGlite boot + dataset load on their first job. */
   warmed: boolean;
+  /** Jobs handled; each worker caches every dataset it touches, so it is recycled after a while. */
+  jobs: number;
 }
+
+/** Recycle a worker after this many jobs so its cached datasets can't grow without bound (512 MB hosts). */
+const RECYCLE_AFTER = Math.max(10, Number(process.env.JUDGE_RECYCLE_JOBS) || 200);
 
 /** Fixed-size pool of judge workers with per-job hard timeouts (terminate + respawn). */
 class JudgePool {
@@ -56,20 +66,33 @@ class JudgePool {
   constructor(private size: number) {}
 
   private spawn(): Slot {
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { execArgv: loaderArgs() });
-    const slot: Slot = { worker, busy: null, timer: null, warmed: false };
+    const worker = fork(fileURLToPath(new URL('./worker.ts', import.meta.url)), [], {
+      // --liftoff-only: skip V8's optimising WASM compiler for the 9 MB Postgres binary
+      // (halves boot memory; queries on small practice datasets stay fast)
+      execArgv: [...loaderArgs(), '--liftoff-only'],
+      serialization: 'advanced', // structured clone, like worker threads (Dates, BigInts survive)
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    });
+    const slot: Slot = { worker, busy: null, timer: null, warmed: false, jobs: 0 };
     worker.on('message', (msg: { id?: number; ok?: boolean; result?: unknown; error?: string; ready?: boolean }) => {
       if (msg.ready || !slot.busy || msg.id !== slot.busy.id) return;
       const p = slot.busy;
-      this.release(slot);
+      if (++slot.jobs >= RECYCLE_AFTER) {
+        slot.busy = null;
+        this.replace(slot);
+      } else this.release(slot);
       if (msg.ok) p.resolve(msg.result);
       else p.reject(new Error(msg.error));
     });
-    worker.on('error', (err) => {
+    const crashed = (err: Error) => {
+      if (!this.slots.includes(slot)) return; // already replaced / recycled
       const p = slot.busy;
+      slot.busy = null;
       this.replace(slot);
       p?.reject(err);
-    });
+    };
+    worker.on('error', crashed);
+    worker.on('exit', (code, signal) => crashed(new Error(`Judge process exited (${signal ?? code})`)));
     return slot;
   }
 
@@ -86,8 +109,7 @@ class JudgePool {
 
   private replace(slot: Slot) {
     if (slot.timer) clearTimeout(slot.timer);
-    slot.worker.removeAllListeners();
-    void slot.worker.terminate();
+    kill(slot.worker);
     const i = this.slots.indexOf(slot);
     if (i >= 0) this.slots[i] = this.spawn();
     this.pump();
@@ -106,7 +128,7 @@ class JudgePool {
         this.replace(slot);
         p.reject(new TimeoutError(p.timeoutMs));
       }, budget);
-      slot.worker.postMessage({ id: p.id, job: p.job });
+      slot.worker.send({ id: p.id, job: p.job });
     }
   }
 
@@ -124,10 +146,29 @@ class JudgePool {
     for (let i = 0; i < this.size; i++) void this.run({ type: 'ping' }).catch(() => {});
   }
 
-  async close() {
-    await Promise.all(this.slots.map((s) => s.worker.terminate()));
+  /** Waits for in-flight jobs, then swaps every worker for a fresh one (frees all cached datasets). */
+  async recycle() {
+    while (this.slots.some((s) => s.busy) || this.queue.length) await new Promise((r) => setTimeout(r, 50));
+    const old = this.slots;
     this.slots = [];
+    await Promise.all(old.map((s) => kill(s.worker)));
   }
+
+  async close() {
+    const old = this.slots;
+    this.slots = [];
+    await Promise.all(old.map((s) => kill(s.worker)));
+  }
+}
+
+/** Hard-kills a judge process and resolves once it has exited (its memory is back). */
+function kill(w: ChildProcess): Promise<void> {
+  w.removeAllListeners();
+  if (w.exitCode !== null || w.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    w.once('exit', () => resolve());
+    w.kill('SIGKILL');
+  });
 }
 
 export const pool = new JudgePool(env.JUDGE_WORKERS);

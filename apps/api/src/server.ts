@@ -77,14 +77,16 @@ if (fs.existsSync(webDist)) {
 async function main() {
   await getDb();
   await reloadDatasets();
-  await discoverModels();
-  pool.warm();
-  await seedIfEmpty();
+  // Open the port first: hosts like Render kill a service that doesn't bind within a few minutes,
+  // and first-boot seeding can take that long. The site works while seeding runs in the background.
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     const ai = aiEnabled() ? providers().map((p) => p.id).join(' → ') : 'off (offline tutor)';
     console.log(`\n  ✦ Querion API  http://localhost:${info.port}/api`);
     console.log(`    datasets: ${datasets().size} · db: ${env.DB_DRIVER} · AI: ${ai}\n`);
   });
+  await discoverModels().catch((e) => console.warn('Model discovery failed:', (e as Error).message));
+  await seedIfEmpty().catch((e) => console.error('Seeding failed:', e));
+  pool.warm();
   startScheduler();
 
   // Close the embedded database cleanly so Ctrl+C never corrupts local data.

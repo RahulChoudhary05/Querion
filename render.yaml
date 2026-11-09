@@ -8,13 +8,17 @@ services:
     plan: free
     # --prod=false: the build (vite, tsc) and runtime (tsx) need dev tooling even with NODE_ENV=production
     buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm build
-    startCommand: pnpm start
+    # run node directly (no pnpm/tsx wrapper processes) — every MB counts on the 512 MB free plan
+    startCommand: cd apps/api && node --import tsx src/server.ts
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: DB_DRIVER
         value: postgres
+      # one judge worker (an embedded Postgres each) fits the 512 MB free plan
+      - key: JUDGE_WORKERS
+        value: '1'
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

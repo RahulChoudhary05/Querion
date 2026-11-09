@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --watch-preserve-output --import tsx src/server.ts",
-    "start": "tsx src/server.ts",
+    "start": "node --import tsx src/server.ts",
     "datasets:build": "tsx src/nebula/datasets/build.ts",
     "seed": "tsx src/cli/seed.ts",
     "forge": "tsx src/cli/forge.ts",
@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "doctor": "tsx src/cli/doctor.ts",
     "mail:test": "tsx src/cli/mail-test.ts",
+    "judge:snapshot": "node --liftoff-only --import tsx src/cli/judge-snapshot.ts",
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
