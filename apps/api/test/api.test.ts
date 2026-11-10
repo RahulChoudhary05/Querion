@@ -22,6 +22,7 @@ Object.assign(process.env, {
   SCHEDULER_ENABLED: 'false',
   ADMIN_TOKEN: 'test-admin-token-123456',
   CRON_SECRET: 'test-cron-secret-123456',
+  PROXY_SECRET: 'test-proxy-secret-123456',
   JWT_SECRET: 'test-jwt-secret-that-is-long-enough-000000',
   RESEND_API_KEY: '',
 });
@@ -110,6 +111,19 @@ describe('sessions & cookies', () => {
     const evil = await call('POST', '/me/sessions/revoke-others', undefined, { cookie: alice, headers: { Origin: 'https://evil.example' } });
     assert.equal(evil.status, 403);
     assert.equal((await call('GET', '/auth/session', undefined, { cookie: alice })).json.user?.handle, 'alice', 'still signed in');
+  });
+
+  test('CSRF: the public site is same-origin when our edge proxy vouches for it', async () => {
+    const site = { Origin: 'https://querion.example', 'X-Forwarded-Host': 'querion.example' };
+    // empty login → 400 means the CSRF guard let it through; 403 means it was blocked
+    const vouched = await call('POST', '/auth/login', {}, { headers: { ...site, 'X-Proxy-Secret': 'test-proxy-secret-123456' } });
+    assert.equal(vouched.status, 400, 'proxied same-site request passes the guard');
+    const forged = await call('POST', '/auth/login', {}, { headers: { ...site, 'X-Proxy-Secret': 'wrong-secret' } });
+    assert.equal(forged.status, 403, 'X-Forwarded-Host without the proxy secret is not trusted');
+    const unvouched = await call('POST', '/auth/login', {}, { headers: site });
+    assert.equal(unvouched.status, 403);
+    const mismatch = await call('POST', '/auth/login', {}, { headers: { Origin: 'https://evil.example', 'X-Forwarded-Host': 'querion.example', 'X-Proxy-Secret': 'test-proxy-secret-123456' } });
+    assert.equal(mismatch.status, 403, 'origin must match the host the proxy saw');
   });
 
   test('protected routes require a session', async () => {

@@ -154,7 +154,13 @@ export function csrfGuard(allowedOrigins: string[]): MiddlewareHandler<Env> {
     const origin = c.req.header('origin');
     if (origin) {
       const self = new URL(c.req.url).origin;
-      const ok = origin === self || allowedOrigins.includes(origin) || (!isProd && /^http:\/\/localhost:\d+$/.test(origin));
+      // Behind our edge proxy (Cloudflare Pages Function) the browser's origin is the PUBLIC site, not
+      // this host. The proxy overwrites X-Forwarded-Host with the host the visitor actually hit and
+      // vouches for it with PROXY_SECRET, so that origin is same-site too — no CORS_ORIGIN entry needed.
+      const viaProxy = !!env.PROXY_SECRET && safeEqual(c.req.header('x-proxy-secret'), env.PROXY_SECRET);
+      const fwdHost = viaProxy ? c.req.header('x-forwarded-host') : undefined;
+      const proxied = fwdHost ? `https://${fwdHost}` : null;
+      const ok = origin === self || origin === proxied || allowedOrigins.includes(origin) || (!isProd && /^http:\/\/localhost:\d+$/.test(origin));
       if (!ok) return c.json({ error: 'Cross-site request blocked.' }, 403);
     }
     await next();
