@@ -35,12 +35,32 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
       KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      KAGGLE_DISCOVER: ${{ secrets.KAGGLE_DISCOVER }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       MAIL_FROM: ${{ secrets.MAIL_FROM }}
       APP_URL: ${{ secrets.APP_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-only-secret-not-used-for-auth-0000' }}
       SCHEDULER_ENABLED: 'false'
     steps:
+      # Fail fast with an actionable message: a missing secret reaches the job as an empty string,
+      # which otherwise only surfaces a minute later as "DB_DRIVER=postgres requires DATABASE_URL".
+      - name: Check required secrets
+        run: |
+          missing=0
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error title=Missing secret DATABASE_URL::Add your Neon/Supabase Postgres connection string as a REPOSITORY secret named DATABASE_URL (Settings → Secrets and variables → Actions → Repository secrets → New repository secret). Environment secrets (e.g. 'Production') are not visible to this job."
+            missing=1
+          fi
+          if [ -z "$GROQ_API_KEY" ] && [ -z "$GEMINI_API_KEY" ]; then
+            echo "::warning title=No AI key::Neither GROQ_API_KEY nor GEMINI_API_KEY is set — Nebula cannot forge new problems."
+          fi
+          if [ -z "$KAGGLE_USERNAME" ] || [ -z "$KAGGLE_KEY" ]; then
+            echo "::warning title=No Kaggle credentials::KAGGLE_USERNAME / KAGGLE_KEY not set — the weekly scout cannot fetch new datasets."
+          fi
+          if [ -n "$RESEND_API_KEY" ] && [ -z "$APP_URL" ]; then
+            echo "::warning title=No APP_URL::RESEND_API_KEY is set but APP_URL is not — links in Nebula emails would point to http://localhost:5173. Add a repository secret APP_URL with your public site URL."
+          fi
+          exit $missing
       # v5 majors run on Node.js 24 (v4 targeted the deprecated Node.js 20 runtime)
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
