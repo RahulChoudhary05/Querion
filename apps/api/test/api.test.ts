@@ -11,6 +11,9 @@ import path from 'node:path';
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'querion-test-'));
 Object.assign(process.env, {
+  // pin it like everything else: CI runs with NODE_ENV=production, which switches to
+  // `__Host-` cookies and strict origins — these tests assert the non-production contract
+  NODE_ENV: 'test',
   QUERION_DATA_DIR: dataDir,
   QUERION_NO_LISTEN: '1',
   DB_DRIVER: 'pglite',

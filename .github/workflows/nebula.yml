@@ -41,13 +41,16 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-only-secret-not-used-for-auth-0000' }}
       SCHEDULER_ENABLED: 'false'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # v5 majors run on Node.js 24 (v4 targeted the deprecated Node.js 20 runtime)
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # --prod=false: NODE_ENV=production (job env above) makes pnpm skip devDependencies,
+      # but the tests and CLIs need them (tsx, typescript, the engine's PGlite) — same as render.yaml
+      - run: pnpm install --frozen-lockfile --prod=false
       - name: Engine tests
         run: pnpm test
       - name: Verify curated bank
